@@ -104,12 +104,15 @@ for opt in "${OPTIONALS[@]-}"; do
     FILTERED_OPTIONALS+=("$opt")
   fi
 done
-OPTIONALS=("${FILTERED_OPTIONALS[@]}")
+OPTIONALS=()
+if [[ -n "${FILTERED_OPTIONALS[*]-}" ]]; then
+  OPTIONALS=("${FILTERED_OPTIONALS[@]}")
+fi
 
 SELECTED_OPTIONALS=()
-if (( ${#OPTIONALS[@]} > 0 )); then
+if [[ -n "${OPTIONALS[*]-}" ]]; then
   CHECKLIST_ARGS=()
-  for opt in "${OPTIONALS[@]}"; do
+  for opt in "${OPTIONALS[@]-}"; do
     CHECKLIST_ARGS+=("$opt" "$(basename "$opt")" "OFF")
   done
   selected_raw="$(ui_checklist "Optional LoRAs" "Select optional files" "${CHECKLIST_ARGS[@]}")"

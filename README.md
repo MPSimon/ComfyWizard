@@ -42,6 +42,15 @@ Example:
 `ARTIFACT_AUTH="Basic <base64(user:pass)>"`
 This header is used for both `/manifest` and `/stacks/*`.
 
+### RunPod setup (short)
+1. Create a secret in RunPod (Account -> Secrets).
+   - URL: https://console.runpod.io/user/secrets/create
+2. In your template/env, set:
+   `ARTIFACT_AUTH={{ RUNPOD_SECRET_secret_name }}`
+3. Launch the pod. The wizard will read `ARTIFACT_AUTH` automatically.
+
+Docs: [RunPod secrets](https://docs.runpod.io/pods/templates/secrets)
+
 ## How to run
 Interactive wizard:
 

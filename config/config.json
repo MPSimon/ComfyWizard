@@ -1,0 +1,8 @@
+{
+  "artifact_host": "https://comfy.bitreq.nl",
+  "stacks_base_path": "/stacks",
+  "comfy_root_candidates": ["/workspace/ComfyUI", "/ComfyUI"],
+  "workflows_dir_rel": "user/default/workflows",
+  "active_workflow_dir_rel": "user/default/workflows/Active",
+  "models_dir_rel": "models"
+}

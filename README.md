@@ -66,3 +66,8 @@ Routing rules (download targets in ComfyUI):
 ## How to add a new private LoRA or artifact
 1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/upscale_models` on the server.
 2. (Optional) Add default required/optional files in `stacks/<stack>/defaults.json` on the server.
+
+## RunPod launcher (one file)
+Copy this file or run it on a clean RunPod instance:
+
+`bin/runpod-launch.sh`

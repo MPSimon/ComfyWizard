@@ -54,6 +54,11 @@ Per-stack config:
 - `config/stacks/<stack>/lora_enhancements/`
 - `config/stacks/<stack>/artifacts/`
 
+Routing rules (download targets in ComfyUI):
+- `workflows/*` -> `user/default/workflows/` and `user/default/workflows/Active/`
+- `lora_character/*`, `lora_enhancements/*` -> `models/loras/`
+- `artifacts/*` -> `models/upscale_models/` (for UpscaleModelLoader `.pth`)
+
 ## How to add a new workflow
 1. Upload the workflow JSON to `stacks/<stack>/workflows/` on the server.
 2. Create an empty placeholder file with the same name in `config/stacks/<stack>/workflows/`.

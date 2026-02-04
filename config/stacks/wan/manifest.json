@@ -1,7 +1,7 @@
 {
   "defaults": {
     "Wan_Animate_God_Mode_V2.5_HearmemanAI.json": {
-      "required": ["artifacts/1xSkinContrast-SuperUltraCompact.pth"],
+      "required": ["upscale_models/1xSkinContrast-SuperUltraCompact.pth"],
       "optional": []
     },
     "Wan_Animate_V2_HearmemanAI.json": {

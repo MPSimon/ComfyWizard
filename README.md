@@ -52,12 +52,12 @@ Per-stack config:
 - `config/stacks/<stack>/workflows/` (workflow file names only; files are gitignored)
 - `config/stacks/<stack>/lora_character/`
 - `config/stacks/<stack>/lora_enhancements/`
-- `config/stacks/<stack>/artifacts/`
+- `config/stacks/<stack>/upscale_models/`
 
 Routing rules (download targets in ComfyUI):
 - `workflows/*` -> `user/default/workflows/` and `user/default/workflows/Active/`
 - `lora_character/*`, `lora_enhancements/*` -> `models/loras/`
-- `artifacts/*` -> `models/upscale_models/` (for UpscaleModelLoader `.pth`)
+- `upscale_models/*` -> `models/upscale_models/` (for UpscaleModelLoader `.pth`)
 
 ## How to add a new workflow
 1. Upload the workflow JSON to `stacks/<stack>/workflows/` on the server.
@@ -66,7 +66,7 @@ Routing rules (download targets in ComfyUI):
 3. (Optional) Add default required/optional files in `config/stacks/<stack>/manifest.json`.
 
 ## How to add a new private LoRA or artifact
-1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/artifacts` on the server.
+1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/upscale_models` on the server.
 2. Create an empty placeholder file with the same name under the matching local folder in `config/stacks/<stack>/`.
    - These placeholder files are gitignored to prevent accidental commits.
 3. (Optional) Add default required/optional files in `config/stacks/<stack>/manifest.json`.

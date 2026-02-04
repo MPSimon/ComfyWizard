@@ -81,7 +81,7 @@ while IFS= read -r line; do
 done < <(get_default_required "$STACK" "$WORKFLOW_FILE_NAME")
 
 OPTIONALS=()
-for dir in "lora_character" "lora_enhancements" "artifacts"; do
+for dir in "lora_character" "lora_enhancements" "upscale_models"; do
   local_dir="${ROOT_DIR}/config/stacks/${STACK}/${dir}"
   if [[ -d "$local_dir" ]]; then
     while IFS= read -r f; do

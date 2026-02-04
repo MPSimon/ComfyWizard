@@ -46,7 +46,7 @@ route_target_path() {
     echo "$comfy_root/$workflows_rel/$filename"
   elif [[ "$path" == lora_character/* || "$path" == lora_enhancements/* || "$path" == loras/* ]]; then
     echo "$comfy_root/$models_rel/loras/$filename"
-  elif [[ "$path" == artifacts/* ]]; then
+  elif [[ "$path" == upscale_models/* ]]; then
     echo "$comfy_root/$models_rel/upscale_models/$filename"
   else
     echo "$comfy_root/$models_rel/$path"

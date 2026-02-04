@@ -93,7 +93,7 @@ while IFS= read -r line; do
 done < <(get_default_optional "$STACK" "$WORKFLOW_FILE_NAME")
 
 # Build optional allowed list from local folders (auto discovery)
-for dir in "lora_character" "lora_enhancements" "artifacts"; do
+for dir in "lora_character" "lora_enhancements" "upscale_models"; do
   local_dir="${STACK_DIR}/${dir}"
   if [[ -d "$local_dir" ]]; then
     while IFS= read -r f; do

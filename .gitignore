@@ -14,5 +14,5 @@ downloads/
 config/stacks/*/workflows/*.json
 config/stacks/*/lora_character/*
 config/stacks/*/lora_enhancements/*
-config/stacks/*/artifacts/*
+config/stacks/*/upscale_models/*
 !config/stacks/*/*/.keep

@@ -49,7 +49,7 @@ Global config: `config/config.json`
 
 Remote manifest (source of truth):
 - `https://comfy.bitreq.nl/manifest` (generated on the server at request time)
-- The manifest is created by `server/manifest.py` on the Hetzner server.
+- The manifest is created by `server/manifest.py` on the Hetzner server and scans `/srv/comfy/stacks`.
 
 Per-stack defaults (server):
 - `stacks/<stack>/defaults.json` (required/optional defaults per workflow)

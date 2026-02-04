@@ -28,6 +28,20 @@ Example for WAN:
 `https://comfy.bitreq.nl/stacks/wan/lora_character/...`
 `https://comfy.bitreq.nl/stacks/wan/workflows/...`
 
+## Current flow (visual)
+🟢 RunPod (WAN repo, clean)
+➡️ 📦 downloads ComfyWizard
+➡️ 🧙 ComfyWizard fetches `https://comfy.bitreq.nl/manifest`
+➡️ ✅ you select workflow + files
+➡️ ⬇️ downloads only chosen files
+➡️ 💾 places files into ComfyUI folders
+
+## Auth (planned/active)
+🔐 Set a RunPod secret and export it as `ARTIFACT_AUTH`.
+Example:
+`ARTIFACT_AUTH="Basic <base64(user:pass)>"`
+This header is used for both `/manifest` and `/stacks/*`.
+
 ## How to run
 Interactive wizard:
 

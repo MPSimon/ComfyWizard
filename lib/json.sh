@@ -15,27 +15,66 @@ json_get() {
   jq -r "$query" "$file"
 }
 
-list_workflows() {
-  local stack="$1"
-  local dir="config/stacks/${stack}/workflows"
-  if [[ ! -d "$dir" ]]; then
+manifest_url() {
+  local config_file="$1"
+  if [[ -n "${MANIFEST_URL:-}" ]]; then
+    echo "${MANIFEST_URL}"
     return 0
   fi
-  find "$dir" -maxdepth 1 -type f -name '*.json' -print | sort
+  local host
+  local path
+  host="$(json_get "$config_file" '.artifact_host')"
+  path="$(json_get "$config_file" '.manifest_path')"
+  echo "${host}${path}"
+}
+
+fetch_manifest() {
+  local config_file="$1"
+  local url
+  url="$(manifest_url "$config_file")"
+  local tmp
+  tmp="$(mktemp)"
+
+  local curl_args=("-fsSL")
+  if [[ -n "${ARTIFACT_AUTH:-}" ]]; then
+    curl_args+=("-H" "Authorization: ${ARTIFACT_AUTH}")
+  fi
+  curl "${curl_args[@]}" "$url" -o "$tmp"
+  echo "$tmp"
+}
+
+list_stacks() {
+  local manifest_file="$1"
+  require_jq
+  jq -r '.stacks | keys[]' "$manifest_file"
+}
+
+list_workflows() {
+  local manifest_file="$1"
+  local stack="$2"
+  require_jq
+  jq -r --arg stack "$stack" '.stacks[$stack].workflows[]?' "$manifest_file"
 }
 
 get_default_required() {
-  local stack="$1"
-  local workflow_file="$2"
-  local defaults_file="config/stacks/${stack}/manifest.json"
+  local manifest_file="$1"
+  local stack="$2"
+  local workflow_file="$3"
   require_jq
-  jq -r --arg wf "$workflow_file" '.defaults[$wf].required[]?' "$defaults_file"
+  jq -r --arg stack "$stack" --arg wf "$workflow_file" '.stacks[$stack].defaults[$wf].required[]?' "$manifest_file"
 }
 
 get_default_optional() {
-  local stack="$1"
-  local workflow_file="$2"
-  local defaults_file="config/stacks/${stack}/manifest.json"
+  local manifest_file="$1"
+  local stack="$2"
+  local workflow_file="$3"
   require_jq
-  jq -r --arg wf "$workflow_file" '.defaults[$wf].optional[]?' "$defaults_file"
+  jq -r --arg stack "$stack" --arg wf "$workflow_file" '.stacks[$stack].defaults[$wf].optional[]?' "$manifest_file"
+}
+
+list_optional_pool() {
+  local manifest_file="$1"
+  local stack="$2"
+  require_jq
+  jq -r --arg stack "$stack" '.stacks[$stack] | (.lora_character // []) + (.lora_enhancements // []) + (.upscale_models // []) | .[]' "$manifest_file"
 }

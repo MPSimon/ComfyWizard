@@ -30,13 +30,16 @@ if ! install_if_missing jq jq; then
   exit 1
 fi
 
+CONFIG_FILE="${ROOT_DIR}/config/config.json"
+MANIFEST_FILE="$(fetch_manifest "$CONFIG_FILE")"
+
 STACKS=()
 while IFS= read -r d; do
-  [[ -n "$d" ]] && STACKS+=("$(basename "$d")")
-done < <(find "${ROOT_DIR}/config/stacks" -maxdepth 1 -mindepth 1 -type d -print | sort)
+  [[ -n "$d" ]] && STACKS+=("$d")
+done < <(list_stacks "$MANIFEST_FILE")
 
 if (( ${#STACKS[@]} == 0 )); then
-  ui_msgbox "No Stacks" "No stacks found in config/stacks"
+  ui_msgbox "No Stacks" "No stacks found in remote manifest"
   exit 1
 fi
 
@@ -54,7 +57,7 @@ fi
 WF_FILES=()
 while IFS= read -r line; do
   [[ -n "$line" ]] && WF_FILES+=("$line")
-done < <(list_workflows "$STACK")
+done < <(list_workflows "$MANIFEST_FILE" "$STACK")
 if (( ${#WF_FILES[@]} == 0 )); then
   ui_msgbox "No Workflows" "No workflow JSON files found in config/stacks/${STACK}/workflows"
   exit 1
@@ -78,18 +81,12 @@ WORKFLOW_LABEL="$WORKFLOW_FILE_NAME"
 REQUIRED_LIST=()
 while IFS= read -r line; do
   [[ -n "$line" ]] && REQUIRED_LIST+=("$line")
-done < <(get_default_required "$STACK" "$WORKFLOW_FILE_NAME")
+done < <(get_default_required "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME")
 
 OPTIONALS=()
-for dir in "lora_character" "lora_enhancements" "upscale_models"; do
-  local_dir="${ROOT_DIR}/config/stacks/${STACK}/${dir}"
-  if [[ -d "$local_dir" ]]; then
-    while IFS= read -r f; do
-      rel="${dir}/$(basename "$f")"
-      OPTIONALS+=("$rel")
-    done < <(find "$local_dir" -maxdepth 1 -type f ! -name '.keep' -print | sort)
-  fi
-done
+while IFS= read -r line; do
+  [[ -n "$line" ]] && OPTIONALS+=("$line")
+done < <(list_optional_pool "$MANIFEST_FILE" "$STACK")
 
 FILTERED_OPTIONALS=()
 for opt in "${OPTIONALS[@]-}"; do
@@ -160,3 +157,5 @@ else
   ui_msgbox "Error" "Sync failed. See logs above."
   exit 1
 fi
+
+rm -f "$MANIFEST_FILE"

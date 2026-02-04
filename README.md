@@ -47,12 +47,12 @@ Global config: `config/config.json`
 - `stacks_base_path` defaults to `/stacks`
 - `comfy_root_candidates` defaults to `/workspace/ComfyUI`, `/ComfyUI`
 
-Per-stack config:
-- `config/stacks/<stack>/manifest.json` (defaults only)
-- `config/stacks/<stack>/workflows/` (workflow file names only; files are gitignored)
-- `config/stacks/<stack>/lora_character/`
-- `config/stacks/<stack>/lora_enhancements/`
-- `config/stacks/<stack>/upscale_models/`
+Remote manifest (source of truth):
+- `https://comfy.bitreq.nl/manifest` (generated on the server at request time)
+- The manifest is created by `server/manifest.py` on the Hetzner server.
+
+Per-stack defaults (server):
+- `stacks/<stack>/defaults.json` (required/optional defaults per workflow)
 
 Routing rules (download targets in ComfyUI):
 - `workflows/*` -> `user/default/workflows/` and `user/default/workflows/Active/`
@@ -61,12 +61,8 @@ Routing rules (download targets in ComfyUI):
 
 ## How to add a new workflow
 1. Upload the workflow JSON to `stacks/<stack>/workflows/` on the server.
-2. Create an empty placeholder file with the same name in `config/stacks/<stack>/workflows/`.
-   - These placeholder files are gitignored to prevent accidental commits.
-3. (Optional) Add default required/optional files in `config/stacks/<stack>/manifest.json`.
+2. (Optional) Add default required/optional files in `stacks/<stack>/defaults.json` on the server.
 
 ## How to add a new private LoRA or artifact
 1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/upscale_models` on the server.
-2. Create an empty placeholder file with the same name under the matching local folder in `config/stacks/<stack>/`.
-   - These placeholder files are gitignored to prevent accidental commits.
-3. (Optional) Add default required/optional files in `config/stacks/<stack>/manifest.json`.
+2. (Optional) Add default required/optional files in `stacks/<stack>/defaults.json` on the server.

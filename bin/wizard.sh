@@ -64,6 +64,7 @@ if (( ${#WF_FILES[@]} == 0 )); then
 fi
 
 MENU_ARGS=()
+MENU_ARGS+=("none" "None (skip workflow)")
 for f in "${WF_FILES[@]}"; do
   base="$(basename "$f")"
   key="${base%.json}"
@@ -75,13 +76,19 @@ if [[ -z "$WORKFLOW_KEY" ]]; then
   exit 1
 fi
 
-WORKFLOW_FILE_NAME="${WORKFLOW_KEY}.json"
-WORKFLOW_LABEL="$WORKFLOW_FILE_NAME"
-
+WORKFLOW_NONE=0
+WORKFLOW_FILE_NAME=""
+WORKFLOW_LABEL="None"
 REQUIRED_LIST=()
-while IFS= read -r line; do
-  [[ -n "$line" ]] && REQUIRED_LIST+=("$line")
-done < <(get_default_required "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME")
+if [[ "$WORKFLOW_KEY" != "none" ]]; then
+  WORKFLOW_FILE_NAME="${WORKFLOW_KEY}.json"
+  WORKFLOW_LABEL="$WORKFLOW_FILE_NAME"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && REQUIRED_LIST+=("$line")
+  done < <(get_default_required "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME")
+else
+  WORKFLOW_NONE=1
+fi
 
 OPTIONALS=()
 while IFS= read -r line; do
@@ -129,10 +136,13 @@ if [[ -n "${SELECTED_OPTIONALS[*]-}" ]]; then
   OPTIONAL_COUNT="${#SELECTED_OPTIONALS[@]}"
 fi
 
-WORKFLOW_FILE_PATH="workflows/${WORKFLOW_FILE_NAME}"
-DOWNLOAD_PATHS=("$WORKFLOW_FILE_PATH")
-if (( ${#REQUIRED_LIST[@]} > 0 )); then
-  DOWNLOAD_PATHS+=("${REQUIRED_LIST[@]}")
+DOWNLOAD_PATHS=()
+if (( WORKFLOW_NONE == 0 )); then
+  WORKFLOW_FILE_PATH="workflows/${WORKFLOW_FILE_NAME}"
+  DOWNLOAD_PATHS+=("$WORKFLOW_FILE_PATH")
+  if (( ${#REQUIRED_LIST[@]} > 0 )); then
+    DOWNLOAD_PATHS+=("${REQUIRED_LIST[@]}")
+  fi
 fi
 if [[ -n "${SELECTED_OPTIONALS[*]-}" ]]; then
   DOWNLOAD_PATHS+=("${SELECTED_OPTIONALS[@]}")
@@ -146,7 +156,10 @@ if ! ui_yesno "Confirm" "$SUMMARY"; then
   exit 1
 fi
 
-SYNC_ARGS=("${ROOT_DIR}/bin/sync.sh" --stack "$STACK" --workflow "$WORKFLOW_KEY")
+SYNC_ARGS=("${ROOT_DIR}/bin/sync.sh" --stack "$STACK")
+if (( WORKFLOW_NONE == 0 )); then
+  SYNC_ARGS+=(--workflow "$WORKFLOW_KEY")
+fi
 for opt in "${SELECTED_OPTIONALS[@]-}"; do
   SYNC_ARGS+=(--optional "$opt")
 done

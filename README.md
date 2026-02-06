@@ -36,6 +36,8 @@ Example for WAN:
 ➡️ ⬇️ downloads only chosen files
 ➡️ 💾 places files into ComfyUI folders
 
+If you choose `None (skip workflow)`, no workflow JSON is downloaded or activated and defaults are skipped. Optional downloads still work.
+
 ## Auth (planned/active)
 🔐 Set a RunPod secret and export it as `ARTIFACT_AUTH`.
 Example:
@@ -46,7 +48,7 @@ This header is used for both `/manifest` and `/stacks/*`.
 1. Create a secret in RunPod (Account -> Secrets).
    - URL: https://console.runpod.io/user/secrets/create
 2. In your template/env, set:
-   `ARTIFACT_AUTH={{ RUNPOD_SECRET_secret_name }}`
+   `ARTIFACT_AUTH={{ RUNPOD_SECRET_artifact_auth }}`
 3. Launch the pod. The wizard will read `ARTIFACT_AUTH` automatically.
 
 Docs: [RunPod secrets](https://docs.runpod.io/pods/templates/secrets)
@@ -62,6 +64,12 @@ Non-interactive:
 
 ```bash
 bash bin/sync.sh --stack wan --workflow Wan_Animate_God_Mode_V2.5_HearmemanAI
+```
+
+Optional-only (no workflow):
+
+```bash
+bash bin/sync.sh --stack wan --optional lora_enhancements/HMFemme_V1.safetensors
 ```
 
 ## Configuration

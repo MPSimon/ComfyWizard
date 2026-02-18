@@ -8,17 +8,24 @@ Small wizard + downloader for ComfyUI assets per stack (WAN first, QWEN later).
 - Resolves workflow-level Hugging Face requirements and downloads missing model files with `hf download`.
 - Activates the chosen workflow by copying it into ComfyUI's workflows and `Active` folders.
 
-## Responsibilities split (important)
-- `start.sh` (WAN repo or base image pipeline) does baseline setup:
-  - Install ComfyUI and custom nodes
-  - Optionally pre-bake shared public baseline models
-  - Start and healthcheck ComfyUI
-- This project does workflow-time sync:
-  - Download private LoRAs/workflows from Hetzner
-  - Download missing per-workflow HF requirements
-  - Activate workflow JSON
+## Responsibilities
+ComfyWizard does:
+- Fetch manifest and let you choose stack/workflow/files.
+- Download private files from Hetzner.
+- Download missing per-workflow HF requirements.
+- Copy selected workflow JSON into `workflows/` and `workflows/Active/`.
 
-This wizard **does not** install or start ComfyUI.
+ComfyWizard does not:
+- Install ComfyUI.
+- Install custom nodes.
+- Start or healthcheck ComfyUI.
+- Build or maintain Docker images.
+
+Docker image should:
+- Provide a ready ComfyUI runtime (ComfyUI + required custom nodes).
+- Optionally pre-bake shared baseline models.
+- Ensure `hf` CLI is available for runtime downloads.
+- Start and healthcheck ComfyUI before running ComfyWizard sync.
 
 ## Expected server structure
 Private assets are served over HTTPS like:
@@ -30,18 +37,24 @@ Example for WAN:
 `https://comfy.bitreq.nl/stacks/wan/lora_character/...`
 `https://comfy.bitreq.nl/stacks/wan/workflows/...`
 
-## Current flow (visual)
-🟢 RunPod (WAN repo, clean)
-➡️ 📦 downloads ComfyWizard
-➡️ 🧙 ComfyWizard fetches `https://comfy.bitreq.nl/manifest`
-➡️ ✅ you select workflow + files
-➡️ 🔎 preflight checks local HF requirements
-➡️ ⬇️ downloads missing HF files + selected private files
-➡️ 💾 places files into ComfyUI folders and activates workflow JSON
+## Current flow
+### Phase 1: External bootstrap (not ComfyWizard)
+1. ComfyUI + custom nodes are prepared.
+2. Shared baseline models may be pre-baked.
+3. ComfyUI is started.
+
+### Phase 2: ComfyWizard runtime sync
+1. Fetch manifest from `https://comfy.bitreq.nl/manifest`.
+2. Select stack/workflow/files.
+3. Preflight local HF requirements.
+4. Download missing HF files.
+5. Download selected private files from Hetzner.
+6. Place files into ComfyUI model/workflow folders.
+7. Copy selected workflow JSON into `workflows/Active`.
 
 If you choose `None (skip workflow)`, no workflow JSON is downloaded or activated and defaults are skipped. Optional downloads still work.
 
-## Auth (planned/active)
+## Auth
 🔐 Set a RunPod secret and export it as `ARTIFACT_AUTH`.
 Example:
 `ARTIFACT_AUTH="Basic <base64(user:pass)>"`

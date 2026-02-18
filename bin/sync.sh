@@ -71,8 +71,16 @@ REQUIRED_PATHS=()
 OPTIONAL_ALLOWED=()
 HF_REQUIRED_RECORDS=()
 HF_REQUIRED_MISSING_RECORDS=()
+HF_REQUIRED_FAILED_RECORDS=()
+HF_OPTIONAL_RECORDS=()
+HF_OPTIONAL_MISSING_RECORDS=()
+HF_OPTIONAL_FAILED_RECORDS=()
 HF_REQUIRED_TOTAL=0
 HF_REQUIRED_PRESENT=0
+HF_OPTIONAL_TOTAL=0
+HF_OPTIONAL_PRESENT=0
+HF_REQUIRED_DOWNLOAD_OK=0
+HF_OPTIONAL_DOWNLOAD_OK=0
 
 if [[ -n "$WORKFLOW_KEY" ]]; then
   WORKFLOW_FILE_NAME="$WORKFLOW_KEY"
@@ -108,6 +116,11 @@ if [[ -n "$WORKFLOW_KEY" ]]; then
     [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
     HF_REQUIRED_RECORDS+=("${repo_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${revision}"$'\t'"${expected_sha256}")
   done < <(list_workflow_hf_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "required")
+
+  while IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 label size_bytes; do
+    [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
+    HF_OPTIONAL_RECORDS+=("${repo_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${revision}"$'\t'"${expected_sha256}")
+  done < <(list_workflow_hf_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "optional")
 fi
 
 while IFS= read -r line; do
@@ -143,12 +156,6 @@ if (( ${#OPTIONAL_SET[@]} > 0 )); then
   DOWNLOAD_LIST+=("${OPTIONAL_SET[@]}")
 fi
 
-if (( ${#DOWNLOAD_LIST[@]} == 0 )); then
-  log_ts "Nothing to download."
-  rm -f "$MANIFEST_FILE"
-  exit 0
-fi
-
 if (( ${#HF_REQUIRED_RECORDS[@]} > 0 )); then
   HF_REQUIRED_TOTAL="${#HF_REQUIRED_RECORDS[@]}"
   for rec in "${HF_REQUIRED_RECORDS[@]}"; do
@@ -179,6 +186,103 @@ if (( ${#HF_REQUIRED_RECORDS[@]} > 0 )); then
   log_ts "HF preflight required: total=${HF_REQUIRED_TOTAL} present=${HF_REQUIRED_PRESENT} missing=${HF_REQUIRED_MISSING}"
 fi
 
+if (( ${#HF_OPTIONAL_RECORDS[@]} > 0 )); then
+  HF_OPTIONAL_TOTAL="${#HF_OPTIONAL_RECORDS[@]}"
+  for rec in "${HF_OPTIONAL_RECORDS[@]}"; do
+    IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 <<< "$rec"
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+
+    present=0
+    if [[ -f "$target" ]]; then
+      if [[ -n "$expected_sha256" ]]; then
+        actual_sha="$(file_sha256 "$target" || true)"
+        if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+          present=1
+        fi
+      else
+        present=1
+      fi
+    fi
+
+    if (( present == 1 )); then
+      HF_OPTIONAL_PRESENT=$(( HF_OPTIONAL_PRESENT + 1 ))
+    else
+      HF_OPTIONAL_MISSING_RECORDS+=("$rec")
+      log_ts "HF optional missing: ${repo_id}/${filename} -> ${target_rel_dir}"
+    fi
+  done
+
+  HF_OPTIONAL_MISSING=$(( HF_OPTIONAL_TOTAL - HF_OPTIONAL_PRESENT ))
+  log_ts "HF preflight optional: total=${HF_OPTIONAL_TOTAL} present=${HF_OPTIONAL_PRESENT} missing=${HF_OPTIONAL_MISSING}"
+fi
+
+if (( ${#DOWNLOAD_LIST[@]} == 0 )) && (( ${#HF_REQUIRED_MISSING_RECORDS[@]} == 0 )) && (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} == 0 )); then
+  log_ts "Nothing to download."
+  rm -f "$MANIFEST_FILE"
+  exit 0
+fi
+
+HF_MISSING_TOTAL=$(( ${#HF_REQUIRED_MISSING_RECORDS[@]} + ${#HF_OPTIONAL_MISSING_RECORDS[@]} ))
+HF_AVAILABLE=1
+if (( HF_MISSING_TOTAL > 0 )) && ! command -v hf >/dev/null 2>&1; then
+  HF_AVAILABLE=0
+  log_ts "WARNING: hf CLI not found; missing HF requirements cannot be downloaded."
+fi
+
+if (( ${#HF_REQUIRED_MISSING_RECORDS[@]} > 0 )); then
+  for rec in "${HF_REQUIRED_MISSING_RECORDS[@]}"; do
+    IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 <<< "$rec"
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+    ok=0
+    if (( HF_AVAILABLE == 1 )) && hf_download_to_target "$repo_id" "$filename" "$target" "$revision"; then
+      if [[ -f "$target" ]]; then
+        if [[ -n "$expected_sha256" ]]; then
+          actual_sha="$(file_sha256 "$target" || true)"
+          if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+            ok=1
+          fi
+        else
+          ok=1
+        fi
+      fi
+    fi
+
+    if (( ok == 1 )); then
+      HF_REQUIRED_DOWNLOAD_OK=$(( HF_REQUIRED_DOWNLOAD_OK + 1 ))
+    else
+      HF_REQUIRED_FAILED_RECORDS+=("$rec")
+      log_ts "WARNING: required HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
+    fi
+  done
+fi
+
+if (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} > 0 )); then
+  for rec in "${HF_OPTIONAL_MISSING_RECORDS[@]}"; do
+    IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 <<< "$rec"
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+    ok=0
+    if (( HF_AVAILABLE == 1 )) && hf_download_to_target "$repo_id" "$filename" "$target" "$revision"; then
+      if [[ -f "$target" ]]; then
+        if [[ -n "$expected_sha256" ]]; then
+          actual_sha="$(file_sha256 "$target" || true)"
+          if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+            ok=1
+          fi
+        else
+          ok=1
+        fi
+      fi
+    fi
+
+    if (( ok == 1 )); then
+      HF_OPTIONAL_DOWNLOAD_OK=$(( HF_OPTIONAL_DOWNLOAD_OK + 1 ))
+    else
+      HF_OPTIONAL_FAILED_RECORDS+=("$rec")
+      log_ts "WARNING: optional HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
+    fi
+  done
+fi
+
 for path in "${DOWNLOAD_LIST[@]}"; do
   url="${BASE_URL}/${path}"
   target="$(route_target_path "$COMFY_ROOT" "$MODELS_REL" "$WORKFLOWS_REL" "$path")"
@@ -199,4 +303,19 @@ if [[ -n "$WORKFLOW_FILE" ]]; then
 else
   log_ts "Workflow: None"
 fi
+
+if (( ${#HF_REQUIRED_RECORDS[@]} > 0 || ${#HF_OPTIONAL_RECORDS[@]} > 0 )); then
+  log_ts "HF download summary: required_ok=${HF_REQUIRED_DOWNLOAD_OK} required_failed=${#HF_REQUIRED_FAILED_RECORDS[@]} optional_ok=${HF_OPTIONAL_DOWNLOAD_OK} optional_failed=${#HF_OPTIONAL_FAILED_RECORDS[@]}"
+fi
+
+if (( ${#HF_REQUIRED_FAILED_RECORDS[@]} > 0 )); then
+  log_ts "WARNING: required HF assets failed:"
+  for rec in "${HF_REQUIRED_FAILED_RECORDS[@]}"; do
+    IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 <<< "$rec"
+    log_ts "  - ${repo_id}/${filename} -> ${target_rel_dir}"
+  done
+  rm -f "$MANIFEST_FILE"
+  exit 2
+fi
+
 rm -f "$MANIFEST_FILE"

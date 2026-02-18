@@ -36,3 +36,45 @@ download() {
   log_ts "Failed to download ${url}"
   return 1
 }
+
+hf_download_to_target() {
+  local repo_id="$1"
+  local filename="$2"
+  local target="$3"
+  local revision="${4:-}"
+
+  if ! command -v hf >/dev/null 2>&1; then
+    log_ts "hf CLI not found; cannot download ${repo_id}/${filename}"
+    return 1
+  fi
+
+  local out
+  local cmd=("hf" "download" "$repo_id" "$filename" "--local-dir" "$(dirname "$target")")
+  if [[ -n "$revision" ]]; then
+    cmd+=("--revision" "$revision")
+  fi
+
+  log_ts "HF downloading ${repo_id}/${filename} -> ${target}"
+  if ! out="$("${cmd[@]}" 2>&1)"; then
+    log_ts "HF download failed for ${repo_id}/${filename}"
+    echo "$out" >&2
+    return 1
+  fi
+
+  local downloaded_path
+  downloaded_path="$(echo "$out" | tail -n 1)"
+  if [[ -n "$downloaded_path" && -f "$downloaded_path" ]]; then
+    mkdir -p "$(dirname "$target")"
+    if [[ "$downloaded_path" != "$target" ]]; then
+      cp -f "$downloaded_path" "$target"
+    fi
+    return 0
+  fi
+
+  if [[ -f "$target" ]]; then
+    return 0
+  fi
+
+  log_ts "HF download output path not found for ${repo_id}/${filename}"
+  return 1
+}

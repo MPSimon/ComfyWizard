@@ -1,19 +1,21 @@
 # ComfyWizard
 
-Small wizard + downloader for **private** ComfyUI assets per stack (WAN first, QWEN later).
+Small wizard + downloader for ComfyUI assets per stack (WAN first, QWEN later).
 
 ## What this is
 - A terminal wizard that lets you choose a stack and workflow.
-- Downloads **private** assets (character LoRAs, optional LoRAs, private workflows) from your Hetzner HTTPS host.
+- Downloads private assets (character LoRAs, optional LoRAs, workflow JSON) from your Hetzner HTTPS host.
+- Resolves workflow-level Hugging Face requirements and downloads missing model files with `hf download`.
 - Activates the chosen workflow by copying it into ComfyUI's workflows and `Active` folders.
 
 ## Responsibilities split (important)
-- `start.sh` (WAN repo) does **all** baseline setup:
+- `start.sh` (WAN repo or base image pipeline) does baseline setup:
   - Install ComfyUI and custom nodes
-  - Download **public** baseline models (WAN checkpoints, VAEs, encoders, public LoRAs, detection, etc.)
+  - Optionally pre-bake shared public baseline models
   - Start and healthcheck ComfyUI
-- This project does **only** private assets:
-  - Download private LoRAs/workflows
+- This project does workflow-time sync:
+  - Download private LoRAs/workflows from Hetzner
+  - Download missing per-workflow HF requirements
   - Activate workflow JSON
 
 This wizard **does not** install or start ComfyUI.
@@ -33,8 +35,9 @@ Example for WAN:
 ➡️ 📦 downloads ComfyWizard
 ➡️ 🧙 ComfyWizard fetches `https://comfy.bitreq.nl/manifest`
 ➡️ ✅ you select workflow + files
-➡️ ⬇️ downloads only chosen files
-➡️ 💾 places files into ComfyUI folders
+➡️ 🔎 preflight checks local HF requirements
+➡️ ⬇️ downloads missing HF files + selected private files
+➡️ 💾 places files into ComfyUI folders and activates workflow JSON
 
 If you choose `None (skip workflow)`, no workflow JSON is downloaded or activated and defaults are skipped. Optional downloads still work.
 
@@ -83,12 +86,36 @@ Remote manifest (source of truth):
 - The manifest is created by `server/manifest.py` on the Hetzner server and scans `/srv/comfy/stacks`.
 
 Per-stack defaults (server):
-- `stacks/<stack>/defaults.json` (required/optional defaults per workflow)
+- `stacks/<stack>/defaults.json` (required/optional private file defaults per workflow)
+
+Per-workflow Hugging Face requirements (in manifest):
+- `stacks.<stack>.workflow_requirements.<workflow_json>.required[]`
+- `stacks.<stack>.workflow_requirements.<workflow_json>.optional[]`
+- On server these are sourced from `stacks/<stack>/workflow_requirements.json`.
+
+Requirement item shape:
+
+```json
+{
+  "source": "huggingface",
+  "repo_id": "org/model-repo",
+  "filename": "path/in/repo/model.safetensors",
+  "target_rel_dir": "checkpoints",
+  "revision": "main",
+  "expected_sha256": "optional lowercase hex"
+}
+```
 
 Routing rules (download targets in ComfyUI):
 - `workflows/*` -> `user/default/workflows/` and `user/default/workflows/Active/`
 - `lora_character/*`, `lora_enhancements/*` -> `models/loras/`
 - `upscale_models/*` -> `models/upscale_models/` (for UpscaleModelLoader `.pth`)
+- HF requirements -> `models/<target_rel_dir>/<basename(filename)>`
+
+HF failure behavior:
+- If a required HF asset fails, sync continues with remaining HF/private downloads.
+- Workflow JSON activation still happens when workflow download succeeds.
+- The command exits non-zero (`2`) and prints a final required-failure summary.
 
 ## How to add a new workflow
 1. Upload the workflow JSON to `stacks/<stack>/workflows/` on the server.
@@ -102,3 +129,17 @@ Routing rules (download targets in ComfyUI):
 Copy this file or run it on a clean RunPod instance:
 
 `bin/runpod-launch.sh`
+
+## Manual verification checklist
+1. Preflight summary in wizard:
+   - Run `bash bin/wizard.sh`
+   - Select a workflow with `workflow_requirements`
+   - Confirm the summary line `HF required: <total> (present: <n>, to download: <n>)`
+2. Required HF success path:
+   - Run `bash bin/sync.sh --stack <stack> --workflow <workflow>`
+   - Verify missing required HF files are downloaded into `models/<target_rel_dir>/`
+3. Required HF failure continuation:
+   - Add one invalid `repo_id` or `filename` requirement
+   - Verify other downloads continue
+   - Verify workflow JSON is copied to `.../workflows/Active/`
+   - Verify final summary lists exact failed required HF entries and exit code is `2`

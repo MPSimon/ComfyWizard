@@ -38,12 +38,14 @@ def main():
             lora_enh = [f"lora_enhancements/{name}" for name in list_files(stack_dir / "lora_enhancements")]
             upscale = [f"upscale_models/{name}" for name in list_files(stack_dir / "upscale_models")]
             defaults = read_defaults(stack_dir / "defaults.json")
+            workflow_requirements = read_defaults(stack_dir / "workflow_requirements.json")
             stacks[stack] = {
                 "workflows": workflows,
                 "lora_character": lora_char,
                 "lora_enhancements": lora_enh,
                 "upscale_models": upscale,
                 "defaults": defaults.get("defaults", {}),
+                "workflow_requirements": workflow_requirements.get("workflow_requirements", {}),
             }
 
     print("Content-Type: application/json\n")

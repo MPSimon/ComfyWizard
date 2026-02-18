@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 source "${ROOT_DIR}/lib/json.sh"
+source "${ROOT_DIR}/lib/fs.sh"
 source "${ROOT_DIR}/lib/ui.sh"
 
 install_if_missing() {
@@ -80,12 +81,38 @@ WORKFLOW_NONE=0
 WORKFLOW_FILE_NAME=""
 WORKFLOW_LABEL="None"
 REQUIRED_LIST=()
+HF_REQUIRED_TOTAL=0
+HF_REQUIRED_PRESENT=0
+HF_REQUIRED_MISSING=0
 if [[ "$WORKFLOW_KEY" != "none" ]]; then
   WORKFLOW_FILE_NAME="${WORKFLOW_KEY}.json"
   WORKFLOW_LABEL="$WORKFLOW_FILE_NAME"
   while IFS= read -r line; do
     [[ -n "$line" ]] && REQUIRED_LIST+=("$line")
   done < <(get_default_required "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME")
+
+  COMFY_ROOT="$(detect_comfy_root "$CONFIG_FILE")"
+  MODELS_REL="$(json_get "$CONFIG_FILE" '.models_dir_rel')"
+  while IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 label size_bytes; do
+    [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
+    HF_REQUIRED_TOTAL=$(( HF_REQUIRED_TOTAL + 1 ))
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+    present=0
+    if [[ -f "$target" ]]; then
+      if [[ -n "$expected_sha256" ]]; then
+        actual_sha="$(file_sha256 "$target" || true)"
+        if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+          present=1
+        fi
+      else
+        present=1
+      fi
+    fi
+    if (( present == 1 )); then
+      HF_REQUIRED_PRESENT=$(( HF_REQUIRED_PRESENT + 1 ))
+    fi
+  done < <(list_workflow_hf_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "required")
+  HF_REQUIRED_MISSING=$(( HF_REQUIRED_TOTAL - HF_REQUIRED_PRESENT ))
 else
   WORKFLOW_NONE=1
 fi
@@ -150,7 +177,7 @@ fi
 
 SIZE_ESTIMATE=""
 
-SUMMARY="Stack: ${STACK}\nWorkflow: ${WORKFLOW_LABEL}\nRequired files: ${REQUIRED_COUNT}\nOptional selected: ${OPTIONAL_COUNT}"
+SUMMARY="Stack: ${STACK}\nWorkflow: ${WORKFLOW_LABEL}\nRequired files: ${REQUIRED_COUNT}\nHF required: ${HF_REQUIRED_TOTAL} (present: ${HF_REQUIRED_PRESENT}, to download: ${HF_REQUIRED_MISSING})\nOptional selected: ${OPTIONAL_COUNT}"
 
 if ! ui_yesno "Confirm" "$SUMMARY"; then
   exit 1

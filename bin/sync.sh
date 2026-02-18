@@ -8,6 +8,29 @@ source "${ROOT_DIR}/lib/json.sh"
 source "${ROOT_DIR}/lib/fs.sh"
 source "${ROOT_DIR}/lib/net.sh"
 
+supports_color() {
+  [[ -t 1 && -z "${NO_COLOR:-}" ]]
+}
+
+colorize() {
+  local code="$1"
+  shift
+  local msg="$*"
+  if supports_color; then
+    printf '\033[%sm%s\033[0m' "$code" "$msg"
+  else
+    printf '%s' "$msg"
+  fi
+}
+
+log_warn() {
+  log_ts "$(colorize "1;33" "WARNING: $*")"
+}
+
+log_error() {
+  log_ts "$(colorize "1;31" "ERROR: $*")"
+}
+
 STACK=""
 WORKFLOW_KEY=""
 OPTIONAL_PATHS=()
@@ -226,7 +249,7 @@ HF_MISSING_TOTAL=$(( ${#HF_REQUIRED_MISSING_RECORDS[@]} + ${#HF_OPTIONAL_MISSING
 HF_AVAILABLE=1
 if (( HF_MISSING_TOTAL > 0 )) && ! command -v hf >/dev/null 2>&1; then
   HF_AVAILABLE=0
-  log_ts "WARNING: hf CLI not found; missing HF requirements cannot be downloaded."
+  log_warn "hf CLI not found; missing HF requirements cannot be downloaded."
 fi
 
 if (( ${#HF_REQUIRED_MISSING_RECORDS[@]} > 0 )); then
@@ -251,7 +274,7 @@ if (( ${#HF_REQUIRED_MISSING_RECORDS[@]} > 0 )); then
       HF_REQUIRED_DOWNLOAD_OK=$(( HF_REQUIRED_DOWNLOAD_OK + 1 ))
     else
       HF_REQUIRED_FAILED_RECORDS+=("$rec")
-      log_ts "WARNING: required HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
+      log_warn "required HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
     fi
   done
 fi
@@ -278,7 +301,7 @@ if (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} > 0 )); then
       HF_OPTIONAL_DOWNLOAD_OK=$(( HF_OPTIONAL_DOWNLOAD_OK + 1 ))
     else
       HF_OPTIONAL_FAILED_RECORDS+=("$rec")
-      log_ts "WARNING: optional HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
+      log_warn "optional HF download failed: ${repo_id}/${filename} -> ${target_rel_dir}"
     fi
   done
 fi
@@ -309,10 +332,10 @@ if (( ${#HF_REQUIRED_RECORDS[@]} > 0 || ${#HF_OPTIONAL_RECORDS[@]} > 0 )); then
 fi
 
 if (( ${#HF_REQUIRED_FAILED_RECORDS[@]} > 0 )); then
-  log_ts "WARNING: required HF assets failed:"
+  log_error "required HF assets failed:"
   for rec in "${HF_REQUIRED_FAILED_RECORDS[@]}"; do
     IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 <<< "$rec"
-    log_ts "  - ${repo_id}/${filename} -> ${target_rel_dir}"
+    log_error "  - ${repo_id}/${filename} -> ${target_rel_dir}"
   done
   rm -f "$MANIFEST_FILE"
   exit 2

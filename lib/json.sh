@@ -78,3 +78,29 @@ list_optional_pool() {
   require_jq
   jq -r --arg stack "$stack" '.stacks[$stack] | (.lora_character // []) + (.lora_enhancements // []) + (.upscale_models // []) | .[]' "$manifest_file"
 }
+
+list_workflow_hf_requirements() {
+  local manifest_file="$1"
+  local stack="$2"
+  local workflow_file="$3"
+  local mode="$4"
+  require_jq
+  jq -r \
+    --arg stack "$stack" \
+    --arg wf "$workflow_file" \
+    --arg mode "$mode" \
+    '
+      .stacks[$stack].workflow_requirements[$wf][$mode][]?
+      | select((.source // "huggingface") == "huggingface")
+      | [
+          (.repo_id // ""),
+          (.filename // ""),
+          (.target_rel_dir // ""),
+          (.revision // ""),
+          (.expected_sha256 // ""),
+          (.label // ""),
+          ((.size_bytes // "") | tostring)
+        ]
+      | @tsv
+    ' "$manifest_file"
+}

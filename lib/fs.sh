@@ -52,3 +52,35 @@ route_target_path() {
     echo "$comfy_root/$models_rel/$path"
   fi
 }
+
+hf_target_path() {
+  local comfy_root="$1"
+  local models_rel="$2"
+  local target_rel_dir="$3"
+  local filename="$4"
+
+  local basename_file
+  basename_file="$(basename "$filename")"
+
+  if [[ -n "$target_rel_dir" ]]; then
+    echo "$comfy_root/$models_rel/$target_rel_dir/$basename_file"
+  else
+    echo "$comfy_root/$models_rel/$basename_file"
+  fi
+}
+
+file_sha256() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+    return 0
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+    return 0
+  fi
+
+  echo "No sha256 tool available (need sha256sum or shasum)." >&2
+  return 1
+}

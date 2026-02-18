@@ -143,6 +143,16 @@ Copy this file or run it on a clean RunPod instance:
 
 `bin/runpod-launch.sh`
 
+`runpod-launch.sh` is the standalone RunPod bootstrap:
+- Requires `ARTIFACT_AUTH`.
+- Downloads and extracts the full ComfyWizard repo.
+- Verifies required runtime files exist (`bin/`, `lib/`, `config/`).
+- Launches `bin/wizard.sh` from the extracted repo root.
+
+`wizard.sh` is an internal entrypoint and is not standalone:
+- It requires full repo layout (`bin/`, `lib/`, `config/`).
+- Running only a copied `wizard.sh` file will fail.
+
 ## Manual verification checklist
 1. Preflight summary in wizard:
    - Run `bash bin/wizard.sh`

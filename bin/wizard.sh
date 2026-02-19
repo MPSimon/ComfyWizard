@@ -146,11 +146,12 @@ if [[ -n "${OPTIONALS[*]-}" ]]; then
   for opt in "${OPTIONALS[@]-}"; do
     CHECKLIST_ARGS+=("$opt" "$(basename "$opt")" "OFF")
   done
-  selected_raw="$(ui_checklist "Optional LoRAs" "Select optional files" "${CHECKLIST_ARGS[@]}")"
-  if [[ -n "$selected_raw" ]]; then
-    # whiptail returns quoted items
-    eval "SELECTED_OPTIONALS=(${selected_raw})"
-  fi
+  mapfile -t SELECTED_OPTIONALS < <(ui_checklist "Optional LoRAs" "Select optional files" "${CHECKLIST_ARGS[@]}")
+  FILTERED_SELECTED_OPTIONALS=()
+  for opt in "${SELECTED_OPTIONALS[@]-}"; do
+    [[ -n "$opt" ]] && FILTERED_SELECTED_OPTIONALS+=("$opt")
+  done
+  SELECTED_OPTIONALS=("${FILTERED_SELECTED_OPTIONALS[@]-}")
 fi
 
 REQUIRED_COUNT=0

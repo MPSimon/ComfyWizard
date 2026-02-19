@@ -21,24 +21,13 @@ download() {
     log_ts "Downloading ${name} (attempt ${attempt}/${max})"
     mkdir -p "$(dirname "$target")"
     set +e
-    curl -fsSL --retry 0 -o "$tmp" "$url" &
-    local curl_pid=$!
-    local elapsed=0
-    while kill -0 "$curl_pid" >/dev/null 2>&1; do
-      if [[ -t 1 ]]; then
-        printf '\r[%s] Downloading %s ... t=%ss' "$(date +"%Y-%m-%d %H:%M:%S")" "$name" "$elapsed"
-      else
-        log_ts "Downloading ${name} ... t=${elapsed}s"
-      fi
-      sleep 2
-      elapsed=$(( elapsed + 2 ))
-    done
-    wait "$curl_pid"
+    if [[ -n "${ARTIFACT_AUTH:-}" ]]; then
+      curl -fSL --retry 0 -H "Authorization: ${ARTIFACT_AUTH}" -o "$tmp" "$url"
+    else
+      curl -fSL --retry 0 -o "$tmp" "$url"
+    fi
     local rc=$?
     set -e
-    if [[ -t 1 ]]; then
-      printf '\r%*s\r' 140 ''
-    fi
 
     if (( rc == 0 )); then
       mv -f "$tmp" "$target"

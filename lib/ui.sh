@@ -110,5 +110,5 @@ ui_checklist() {
       fi
     fi
   done
-  printf '%s ' "${out[@]}"
+  printf '%s\n' "${out[@]}"
 }

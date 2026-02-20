@@ -5,14 +5,14 @@ Small wizard + downloader for ComfyUI assets per stack (WAN first, QWEN later).
 ## What this is
 - A terminal wizard that lets you choose a stack and workflow.
 - Downloads private assets (character LoRAs, optional LoRAs, workflow JSON) from your Hetzner HTTPS host.
-- Resolves workflow-level Hugging Face requirements and downloads missing model files with `hf download`.
+- Resolves workflow-level external requirements and downloads missing model files from Hugging Face (`hf download`) and Civitai (token-based API).
 - Activates the chosen workflow by copying it into ComfyUI's workflows and `Active` folders.
 
 ## Responsibilities
 ComfyWizard does:
 - Fetch manifest and let you choose stack/workflow/files.
 - Download private files from Hetzner.
-- Download missing per-workflow HF requirements.
+- Download missing per-workflow external requirements (HF + Civitai).
 - Copy selected workflow JSON into `workflows/` and `workflows/Active/`.
 
 ComfyWizard does not:
@@ -35,6 +35,7 @@ Private assets are served over HTTPS like:
 Example for WAN:
 
 `https://comfy.bitreq.nl/stacks/wan/lora_character/...`
+`https://comfy.bitreq.nl/stacks/wan/lora_style/...`
 `https://comfy.bitreq.nl/stacks/wan/workflows/...`
 
 ## Current flow
@@ -101,12 +102,12 @@ Remote manifest (source of truth):
 Per-stack defaults (server):
 - `stacks/<stack>/defaults.json` (required/optional private file defaults per workflow)
 
-Per-workflow Hugging Face requirements (in manifest):
+Per-workflow external requirements (in manifest):
 - `stacks.<stack>.workflow_requirements.<workflow_json>.required[]`
 - `stacks.<stack>.workflow_requirements.<workflow_json>.optional[]`
 - On server these are sourced from `stacks/<stack>/workflow_requirements.json`.
 
-Requirement item shape:
+Requirement item shape (Hugging Face):
 
 ```json
 {
@@ -119,23 +120,39 @@ Requirement item shape:
 }
 ```
 
+Requirement item shape (Civitai):
+
+```json
+{
+  "source": "civitai",
+  "model_version_id": "1996092",
+  "filename": "WAN2.1_SmartphoneSnapshotPhotoReality_v1_by-AI_Characters.safetensors",
+  "target_rel_dir": "loras",
+  "expected_sha256": "optional lowercase hex"
+}
+```
+
 Routing rules (download targets in ComfyUI):
 - `workflows/*` -> `user/default/workflows/` and `user/default/workflows/Active/`
-- `lora_character/*`, `lora_enhancements/*` -> `models/loras/`
+- `lora_character/*`, `lora_style/*`, `lora_enhancements/*` -> `models/loras/`
 - `upscale_models/*` -> `models/upscale_models/` (for UpscaleModelLoader `.pth`)
-- HF requirements -> `models/<target_rel_dir>/<basename(filename)>`
+- HF/Civitai requirements -> `models/<target_rel_dir>/<basename(filename)>`
 
 HF failure behavior:
 - If a required HF asset fails, sync continues with remaining HF/private downloads.
 - Workflow JSON activation still happens when workflow download succeeds.
 - The command exits non-zero (`2`) and prints a final required-failure summary.
 
+Civitai behavior:
+- Requires `CIVITAI_TOKEN` env var when any required Civitai asset is missing.
+- If a required Civitai asset fails, sync continues with remaining downloads, then exits non-zero (`2`) with summary.
+
 ## How to add a new workflow
 1. Upload the workflow JSON to `stacks/<stack>/workflows/` on the server.
 2. (Optional) Add default required/optional files in `stacks/<stack>/defaults.json` on the server.
 
 ## How to add a new private LoRA or artifact
-1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/upscale_models` on the server.
+1. Upload the file to `stacks/<stack>/lora_character`, `stacks/<stack>/lora_style`, `stacks/<stack>/lora_enhancements`, or `stacks/<stack>/upscale_models` on the server.
 2. (Optional) Add default required/optional files in `stacks/<stack>/defaults.json` on the server.
 
 ## RunPod launcher (one file)

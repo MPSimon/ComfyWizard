@@ -93,7 +93,7 @@ if [[ "$WORKFLOW_KEY" != "none" ]]; then
 
   COMFY_ROOT="$(detect_comfy_root "$CONFIG_FILE")"
   MODELS_REL="$(json_get "$CONFIG_FILE" '.models_dir_rel')"
-  while IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 label size_bytes; do
+  while IFS=$'\t' read -r source repo_id filename target_rel_dir revision expected_sha256 label size_bytes model_version_id; do
     [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
     HF_REQUIRED_TOTAL=$(( HF_REQUIRED_TOTAL + 1 ))
     target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"

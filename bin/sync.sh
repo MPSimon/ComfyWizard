@@ -329,6 +329,36 @@ hf_download_group() {
   done
 }
 
+civitai_display_name() {
+  local filename="$1"
+  basename "$filename"
+}
+
+civitai_run_worker() {
+  local rec="$1"
+  IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+  local target
+  target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+
+  if ! civitai_download_to_target "$model_version_id" "$filename" "$target" "" ""; then
+    return 1
+  fi
+
+  if [[ ! -f "$target" ]]; then
+    return 1
+  fi
+
+  if [[ -n "$expected_sha256" ]]; then
+    local actual_sha
+    actual_sha="$(file_sha256 "$target" || true)"
+    if [[ -z "$actual_sha" || "${actual_sha,,}" != "${expected_sha256,,}" ]]; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
 STACK=""
 WORKFLOW_KEY=""
 OPTIONAL_PATHS=()
@@ -345,6 +375,7 @@ Flags:
 Env overrides:
   ARTIFACT_HOST  Override config artifact_host
   COMFY_ROOT     Force comfy root path
+  CIVITAI_TOKEN  Required for Civitai workflow requirements
   MAX_PARALLEL   Optional; 0=unlimited (unused for now)
 USAGE
 }
@@ -419,6 +450,20 @@ HF_REQUIRED_DOWNLOAD_OK=0
 HF_OPTIONAL_DOWNLOAD_OK=0
 HF_REQUIRED_DOWNLOAD_SECONDS=0
 HF_OPTIONAL_DOWNLOAD_SECONDS=0
+CIVITAI_REQUIRED_RECORDS=()
+CIVITAI_REQUIRED_MISSING_RECORDS=()
+CIVITAI_REQUIRED_FAILED_RECORDS=()
+CIVITAI_OPTIONAL_RECORDS=()
+CIVITAI_OPTIONAL_MISSING_RECORDS=()
+CIVITAI_OPTIONAL_FAILED_RECORDS=()
+CIVITAI_REQUIRED_TOTAL=0
+CIVITAI_REQUIRED_PRESENT=0
+CIVITAI_OPTIONAL_TOTAL=0
+CIVITAI_OPTIONAL_PRESENT=0
+CIVITAI_REQUIRED_DOWNLOAD_OK=0
+CIVITAI_OPTIONAL_DOWNLOAD_OK=0
+CIVITAI_REQUIRED_DOWNLOAD_SECONDS=0
+CIVITAI_OPTIONAL_DOWNLOAD_SECONDS=0
 PRIVATE_DOWNLOAD_SECONDS=0
 SYNC_START_SECONDS=$SECONDS
 
@@ -452,15 +497,25 @@ if [[ -n "$WORKFLOW_KEY" ]]; then
     [[ -n "$line" ]] && OPTIONAL_ALLOWED+=("$line")
   done < <(get_default_optional "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME")
 
-  while IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 label size_bytes; do
+  while IFS=$'\t' read -r source repo_id filename target_rel_dir revision expected_sha256 label size_bytes model_version_id; do
     [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
     HF_REQUIRED_RECORDS+=("${repo_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${revision}"$'\t'"${expected_sha256}")
   done < <(list_workflow_hf_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "required")
 
-  while IFS=$'\t' read -r repo_id filename target_rel_dir revision expected_sha256 label size_bytes; do
+  while IFS=$'\t' read -r source repo_id filename target_rel_dir revision expected_sha256 label size_bytes model_version_id; do
     [[ -z "$repo_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
     HF_OPTIONAL_RECORDS+=("${repo_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${revision}"$'\t'"${expected_sha256}")
   done < <(list_workflow_hf_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "optional")
+
+  while IFS=$'\t' read -r source repo_id filename target_rel_dir revision expected_sha256 label size_bytes model_version_id; do
+    [[ -z "$model_version_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
+    CIVITAI_REQUIRED_RECORDS+=("${model_version_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${expected_sha256}")
+  done < <(list_workflow_civitai_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "required")
+
+  while IFS=$'\t' read -r source repo_id filename target_rel_dir revision expected_sha256 label size_bytes model_version_id; do
+    [[ -z "$model_version_id" || -z "$filename" || -z "$target_rel_dir" ]] && continue
+    CIVITAI_OPTIONAL_RECORDS+=("${model_version_id}"$'\t'"${filename}"$'\t'"${target_rel_dir}"$'\t'"${expected_sha256}")
+  done < <(list_workflow_civitai_requirements "$MANIFEST_FILE" "$STACK" "$WORKFLOW_FILE_NAME" "optional")
 fi
 
 while IFS= read -r line; do
@@ -566,7 +621,73 @@ if (( ${#HF_OPTIONAL_RECORDS[@]} > 0 )); then
   log_ts "HF preflight optional: total=${HF_OPTIONAL_TOTAL} present=${HF_OPTIONAL_PRESENT} missing=${HF_OPTIONAL_MISSING}"
 fi
 
-if (( ${#DOWNLOAD_LIST[@]} == 0 )) && (( ${#HF_REQUIRED_MISSING_RECORDS[@]} == 0 )) && (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} == 0 )); then
+if (( ${#CIVITAI_REQUIRED_RECORDS[@]} > 0 )); then
+  log_section "Civitai preflight (required)"
+  CIVITAI_REQUIRED_TOTAL="${#CIVITAI_REQUIRED_RECORDS[@]}"
+  for rec in "${CIVITAI_REQUIRED_RECORDS[@]}"; do
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    display_name="$(civitai_display_name "$filename")"
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+
+    present=0
+    if [[ -f "$target" ]]; then
+      if [[ -n "$expected_sha256" ]]; then
+        actual_sha="$(file_sha256 "$target" || true)"
+        if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+          present=1
+        fi
+      else
+        present=1
+      fi
+    fi
+
+    if (( present == 1 )); then
+      CIVITAI_REQUIRED_PRESENT=$(( CIVITAI_REQUIRED_PRESENT + 1 ))
+    else
+      CIVITAI_REQUIRED_MISSING_RECORDS+=("$rec")
+      log_ts "Civitai requirement missing: ${display_name} -> ${target_rel_dir}"
+    fi
+  done
+  CIVITAI_REQUIRED_MISSING=$(( CIVITAI_REQUIRED_TOTAL - CIVITAI_REQUIRED_PRESENT ))
+  log_ts "Civitai preflight required: total=${CIVITAI_REQUIRED_TOTAL} present=${CIVITAI_REQUIRED_PRESENT} missing=${CIVITAI_REQUIRED_MISSING}"
+fi
+
+if (( ${#CIVITAI_OPTIONAL_RECORDS[@]} > 0 )); then
+  log_section "Civitai preflight (optional)"
+  CIVITAI_OPTIONAL_TOTAL="${#CIVITAI_OPTIONAL_RECORDS[@]}"
+  for rec in "${CIVITAI_OPTIONAL_RECORDS[@]}"; do
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    display_name="$(civitai_display_name "$filename")"
+    target="$(hf_target_path "$COMFY_ROOT" "$MODELS_REL" "$target_rel_dir" "$filename")"
+
+    present=0
+    if [[ -f "$target" ]]; then
+      if [[ -n "$expected_sha256" ]]; then
+        actual_sha="$(file_sha256 "$target" || true)"
+        if [[ -n "$actual_sha" && "${actual_sha,,}" == "${expected_sha256,,}" ]]; then
+          present=1
+        fi
+      else
+        present=1
+      fi
+    fi
+
+    if (( present == 1 )); then
+      CIVITAI_OPTIONAL_PRESENT=$(( CIVITAI_OPTIONAL_PRESENT + 1 ))
+    else
+      CIVITAI_OPTIONAL_MISSING_RECORDS+=("$rec")
+      log_ts "Civitai optional missing: ${display_name} -> ${target_rel_dir}"
+    fi
+  done
+  CIVITAI_OPTIONAL_MISSING=$(( CIVITAI_OPTIONAL_TOTAL - CIVITAI_OPTIONAL_PRESENT ))
+  log_ts "Civitai preflight optional: total=${CIVITAI_OPTIONAL_TOTAL} present=${CIVITAI_OPTIONAL_PRESENT} missing=${CIVITAI_OPTIONAL_MISSING}"
+fi
+
+if (( ${#DOWNLOAD_LIST[@]} == 0 )) \
+  && (( ${#HF_REQUIRED_MISSING_RECORDS[@]} == 0 )) \
+  && (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} == 0 )) \
+  && (( ${#CIVITAI_REQUIRED_MISSING_RECORDS[@]} == 0 )) \
+  && (( ${#CIVITAI_OPTIONAL_MISSING_RECORDS[@]} == 0 )); then
   log_ts "Nothing to download."
   rm -f "$MANIFEST_FILE"
   exit 0
@@ -595,6 +716,55 @@ fi
 
 if (( ${#HF_OPTIONAL_MISSING_RECORDS[@]} > 0 )) && (( HF_AVAILABLE == 1 )); then
   hf_download_group HF_OPTIONAL_MISSING_RECORDS "0" "HF downloads (optional, concurrency=${HF_CONCURRENCY})"
+fi
+
+CIVITAI_MISSING_TOTAL=$(( ${#CIVITAI_REQUIRED_MISSING_RECORDS[@]} + ${#CIVITAI_OPTIONAL_MISSING_RECORDS[@]} ))
+CIVITAI_AVAILABLE=1
+if (( CIVITAI_MISSING_TOTAL > 0 )) && [[ -z "${CIVITAI_TOKEN:-}" ]]; then
+  CIVITAI_AVAILABLE=0
+  log_warn "CIVITAI_TOKEN not set; missing Civitai requirements cannot be downloaded."
+  for rec in "${CIVITAI_REQUIRED_MISSING_RECORDS[@]}"; do
+    CIVITAI_REQUIRED_FAILED_RECORDS+=("$rec")
+  done
+  for rec in "${CIVITAI_OPTIONAL_MISSING_RECORDS[@]}"; do
+    CIVITAI_OPTIONAL_FAILED_RECORDS+=("$rec")
+  done
+fi
+
+if (( ${#CIVITAI_REQUIRED_MISSING_RECORDS[@]} > 0 )) && (( CIVITAI_AVAILABLE == 1 )); then
+  log_section "Civitai downloads (required)"
+  for rec in "${CIVITAI_REQUIRED_MISSING_RECORDS[@]}"; do
+    item_start=$SECONDS
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    display_name="$(civitai_display_name "$filename")"
+    log_ts "Civitai required: ${display_name} -> ${target_rel_dir}"
+    if civitai_run_worker "$rec"; then
+      CIVITAI_REQUIRED_DOWNLOAD_OK=$(( CIVITAI_REQUIRED_DOWNLOAD_OK + 1 ))
+      log_ts "Civitai done: ${display_name}"
+    else
+      CIVITAI_REQUIRED_FAILED_RECORDS+=("$rec")
+      log_warn "required Civitai download failed: ${display_name} -> ${target_rel_dir}"
+    fi
+    CIVITAI_REQUIRED_DOWNLOAD_SECONDS=$(( CIVITAI_REQUIRED_DOWNLOAD_SECONDS + (SECONDS - item_start) ))
+  done
+fi
+
+if (( ${#CIVITAI_OPTIONAL_MISSING_RECORDS[@]} > 0 )) && (( CIVITAI_AVAILABLE == 1 )); then
+  log_section "Civitai downloads (optional)"
+  for rec in "${CIVITAI_OPTIONAL_MISSING_RECORDS[@]}"; do
+    item_start=$SECONDS
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    display_name="$(civitai_display_name "$filename")"
+    log_ts "Civitai optional: ${display_name} -> ${target_rel_dir}"
+    if civitai_run_worker "$rec"; then
+      CIVITAI_OPTIONAL_DOWNLOAD_OK=$(( CIVITAI_OPTIONAL_DOWNLOAD_OK + 1 ))
+      log_ts "Civitai done: ${display_name}"
+    else
+      CIVITAI_OPTIONAL_FAILED_RECORDS+=("$rec")
+      log_warn "optional Civitai download failed: ${display_name} -> ${target_rel_dir}"
+    fi
+    CIVITAI_OPTIONAL_DOWNLOAD_SECONDS=$(( CIVITAI_OPTIONAL_DOWNLOAD_SECONDS + (SECONDS - item_start) ))
+  done
 fi
 
 if (( ${#DOWNLOAD_LIST[@]} > 0 )); then
@@ -637,6 +807,11 @@ if (( ${#HF_REQUIRED_RECORDS[@]} > 0 || ${#HF_OPTIONAL_RECORDS[@]} > 0 )); then
   log_ts "HF timing: required=${HF_REQUIRED_DOWNLOAD_SECONDS}s optional=${HF_OPTIONAL_DOWNLOAD_SECONDS}s"
 fi
 
+if (( ${#CIVITAI_REQUIRED_RECORDS[@]} > 0 || ${#CIVITAI_OPTIONAL_RECORDS[@]} > 0 )); then
+  log_ts "Civitai download summary: required_ok=${CIVITAI_REQUIRED_DOWNLOAD_OK} required_failed=${#CIVITAI_REQUIRED_FAILED_RECORDS[@]} optional_ok=${CIVITAI_OPTIONAL_DOWNLOAD_OK} optional_failed=${#CIVITAI_OPTIONAL_FAILED_RECORDS[@]}"
+  log_ts "Civitai timing: required=${CIVITAI_REQUIRED_DOWNLOAD_SECONDS}s optional=${CIVITAI_OPTIONAL_DOWNLOAD_SECONDS}s"
+fi
+
 if (( ${#HF_REQUIRED_FAILED_RECORDS[@]} > 0 )); then
   log_error "required HF assets failed:"
   for rec in "${HF_REQUIRED_FAILED_RECORDS[@]}"; do
@@ -654,6 +829,23 @@ if (( ${#HF_REQUIRED_FAILED_RECORDS[@]} > 0 )); then
   exit 2
 fi
 
+if (( ${#CIVITAI_REQUIRED_FAILED_RECORDS[@]} > 0 )); then
+  log_error "required Civitai assets failed:"
+  for rec in "${CIVITAI_REQUIRED_FAILED_RECORDS[@]}"; do
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    log_error "  - model_version_id=${model_version_id} file=${filename} -> ${target_rel_dir}"
+  done
+  if (( ${#CIVITAI_OPTIONAL_FAILED_RECORDS[@]} > 0 )); then
+    log_warn "optional Civitai assets failed:"
+    for rec in "${CIVITAI_OPTIONAL_FAILED_RECORDS[@]}"; do
+      IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+      log_warn "  - model_version_id=${model_version_id} file=${filename} -> ${target_rel_dir}"
+    done
+  fi
+  rm -f "$MANIFEST_FILE"
+  exit 2
+fi
+
 if (( ${#HF_OPTIONAL_FAILED_RECORDS[@]} > 0 )); then
   log_warn "optional HF assets failed:"
   for rec in "${HF_OPTIONAL_FAILED_RECORDS[@]}"; do
@@ -662,8 +854,16 @@ if (( ${#HF_OPTIONAL_FAILED_RECORDS[@]} > 0 )); then
   done
 fi
 
+if (( ${#CIVITAI_OPTIONAL_FAILED_RECORDS[@]} > 0 )); then
+  log_warn "optional Civitai assets failed:"
+  for rec in "${CIVITAI_OPTIONAL_FAILED_RECORDS[@]}"; do
+    IFS=$'\t' read -r model_version_id filename target_rel_dir expected_sha256 <<< "$rec"
+    log_warn "  - model_version_id=${model_version_id} file=${filename} -> ${target_rel_dir}"
+  done
+fi
+
 log_section "Sync complete"
 log_ts "Total runtime: $(( SECONDS - SYNC_START_SECONDS ))s"
-log_ts "Download timing: hf_required=${HF_REQUIRED_DOWNLOAD_SECONDS}s hf_optional=${HF_OPTIONAL_DOWNLOAD_SECONDS}s private=${PRIVATE_DOWNLOAD_SECONDS}s"
+log_ts "Download timing: hf_required=${HF_REQUIRED_DOWNLOAD_SECONDS}s hf_optional=${HF_OPTIONAL_DOWNLOAD_SECONDS}s civitai_required=${CIVITAI_REQUIRED_DOWNLOAD_SECONDS}s civitai_optional=${CIVITAI_OPTIONAL_DOWNLOAD_SECONDS}s private=${PRIVATE_DOWNLOAD_SECONDS}s"
 
 rm -f "$MANIFEST_FILE"

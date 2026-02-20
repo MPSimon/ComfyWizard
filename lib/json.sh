@@ -76,7 +76,7 @@ list_optional_pool() {
   local manifest_file="$1"
   local stack="$2"
   require_jq
-  jq -r --arg stack "$stack" '.stacks[$stack] | (.lora_character // []) + (.lora_enhancements // []) + (.upscale_models // []) | .[]' "$manifest_file"
+  jq -r --arg stack "$stack" '.stacks[$stack] | (.lora_character // []) + (.lora_style // []) + (.lora_enhancements // []) + (.upscale_models // []) | .[]' "$manifest_file"
 }
 
 list_workflow_hf_requirements() {
@@ -84,22 +84,42 @@ list_workflow_hf_requirements() {
   local stack="$2"
   local workflow_file="$3"
   local mode="$4"
+  list_workflow_requirements_by_source "$manifest_file" "$stack" "$workflow_file" "$mode" "huggingface"
+}
+
+list_workflow_civitai_requirements() {
+  local manifest_file="$1"
+  local stack="$2"
+  local workflow_file="$3"
+  local mode="$4"
+  list_workflow_requirements_by_source "$manifest_file" "$stack" "$workflow_file" "$mode" "civitai"
+}
+
+list_workflow_requirements_by_source() {
+  local manifest_file="$1"
+  local stack="$2"
+  local workflow_file="$3"
+  local mode="$4"
+  local source="$5"
   require_jq
   jq -r \
     --arg stack "$stack" \
     --arg wf "$workflow_file" \
     --arg mode "$mode" \
+    --arg source "$source" \
     '
       .stacks[$stack].workflow_requirements[$wf][$mode][]?
-      | select((.source // "huggingface") == "huggingface")
+      | select((.source // "huggingface") == $source)
       | [
+          (.source // "huggingface"),
           (.repo_id // ""),
           (.filename // ""),
           (.target_rel_dir // ""),
           (.revision // ""),
           (.expected_sha256 // ""),
           (.label // ""),
-          ((.size_bytes // "") | tostring)
+          ((.size_bytes // "") | tostring),
+          ((.model_version_id // "") | tostring)
         ]
       | @tsv
     ' "$manifest_file"

@@ -135,3 +135,65 @@ hf_download_to_target() {
   log_ts "HF download output path not found for $(basename "$filename")"
   return 1
 }
+
+civitai_download_to_target() {
+  local model_version_id="$1"
+  local filename="$2"
+  local target="$3"
+  local line_callback="${4:-}"
+  local heartbeat_callback="${5:-}"
+
+  if [[ -z "${CIVITAI_TOKEN:-}" ]]; then
+    log_ts "CIVITAI_TOKEN is required for Civitai downloads"
+    return 1
+  fi
+
+  local url="https://civitai.com/api/download/models/${model_version_id}"
+  local tmp="${target}.part"
+  local out_file
+  out_file="$(mktemp)"
+  local attempt=1
+  local max=3
+  local backoff=1
+  mkdir -p "$(dirname "$target")"
+
+  while (( attempt <= max )); do
+    echo "Attempt ${attempt}/${max}: ${filename}" >>"$out_file"
+    set +e
+    curl -fSL --retry 0 \
+      -H "Authorization: Bearer ${CIVITAI_TOKEN}" \
+      -H "User-Agent: ComfyWizard/1.0" \
+      -o "$tmp" "$url" >>"$out_file" 2>&1
+    local rc=$?
+    set -e
+
+    if (( rc == 0 )); then
+      mv -f "$tmp" "$target"
+      if [[ -n "$line_callback" ]]; then
+        "$line_callback" "civitai:${model_version_id}" "$filename" "downloaded"
+      fi
+      rm -f "$out_file"
+      return 0
+    fi
+
+    rm -f "$tmp"
+    if [[ -n "$line_callback" ]]; then
+      "$line_callback" "civitai:${model_version_id}" "$filename" "attempt ${attempt} failed"
+    fi
+
+    if (( attempt == max )); then
+      break
+    fi
+
+    if [[ -n "$heartbeat_callback" ]]; then
+      "$heartbeat_callback" "civitai:${model_version_id}" "$filename" "$attempt"
+    fi
+    sleep "$backoff"
+    backoff=$(( backoff * 2 ))
+    attempt=$(( attempt + 1 ))
+  done
+
+  log_ts "Civitai download failed for $(basename "$filename") from model version ${model_version_id}"
+  rm -f "$out_file"
+  return 1
+}

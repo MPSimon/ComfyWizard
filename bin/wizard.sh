@@ -149,7 +149,9 @@ if [[ -n "${OPTIONALS[*]-}" ]]; then
   mapfile -t SELECTED_OPTIONALS < <(ui_checklist "Optional LoRAs" "Select optional files" "${CHECKLIST_ARGS[@]}")
   FILTERED_SELECTED_OPTIONALS=()
   for opt in "${SELECTED_OPTIONALS[@]-}"; do
-    [[ -n "$opt" ]] && FILTERED_SELECTED_OPTIONALS+=("$opt")
+    if [[ "$opt" =~ [^[:space:]] ]]; then
+      FILTERED_SELECTED_OPTIONALS+=("$opt")
+    fi
   done
   SELECTED_OPTIONALS=("${FILTERED_SELECTED_OPTIONALS[@]-}")
 fi
@@ -189,7 +191,9 @@ if (( WORKFLOW_NONE == 0 )); then
   SYNC_ARGS+=(--workflow "$WORKFLOW_KEY")
 fi
 for opt in "${SELECTED_OPTIONALS[@]-}"; do
-  SYNC_ARGS+=(--optional "$opt")
+  if [[ "$opt" =~ [^[:space:]] ]]; then
+    SYNC_ARGS+=(--optional "$opt")
+  fi
 done
 
 if "${SYNC_ARGS[@]}"; then

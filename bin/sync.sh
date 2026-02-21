@@ -525,6 +525,9 @@ done < <(list_optional_pool "$MANIFEST_FILE" "$STACK")
 OPTIONAL_SET=()
 if (( ${#OPTIONAL_PATHS[@]} > 0 )); then
   for opt in "${OPTIONAL_PATHS[@]}"; do
+    if ! [[ "$opt" =~ [^[:space:]] ]]; then
+      continue
+    fi
     local_ok=0
     for allowed in "${OPTIONAL_ALLOWED[@]}"; do
       if [[ "$opt" == "$allowed" ]]; then
